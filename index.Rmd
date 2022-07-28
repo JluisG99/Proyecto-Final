@@ -354,7 +354,7 @@ colores_distritos_delitos <-
 
 ```{r}
 colores_distritos_delitos <-
-  colorNumeric(palette = "PuRd",
+  colorNumeric(palette = "Paired",
                domain = distritos_delitos$delitos,
                na.color = "transparent")
 renderLeaflet({
@@ -456,8 +456,8 @@ renderPlotly({
 grafico_delitos <-
   estadisticas %>%
   count(Victima) %>%
-  ggplot(aes(x = reorder(Victima, n), y = n)) +
-  geom_bar(stat = "identity", fill=c(1:5)) +
+  ggplot(aes(x = reorder(Victima, -n), y = n)) +
+  geom_bar(stat = "identity", fill = "purple") +
   xlab("Tipo de delito") +
   ylab("Cantidad") +
    ggtitle("Cantidad de delitos por tipo de víctima") +
@@ -470,27 +470,23 @@ ggplotly(grafico_delitos)%>%
 
 ### **Cantidad de delitos por mes**
 ```{r}
-Del_mes <- estadisticas %>%
-  dplyr::select(Fecha, Delito)
-```
-
-
-```{r grafico-delitos-mes, message=FALSE}
 renderPlotly({
   estadisticas <- filtrarEstadisticas()
-
-graph2 <- 
-Del_mes %>% mutate(mes = month(Fecha, label = FALSE)) %>%
-  ggplot() +
-  geom_bar(aes(x = mes), fill = "darkolivegreen3", color = "gold") + 
-  ggtitle("Cantidad de delitos por mes") + 
-  xlab("Mes (1-11)") + 
-  ylab("Cantidad") + 
-  theme_minimal() 
-ggplotly(graph2) %>%
-  config(locale = 'es')
+estadisticas$fecha2=as.numeric(format(estadisticas$Fecha,"%m"))
+tabla1=summarise(group_by(estadisticas, fecha2),
+                n=n())
+ggplot2_cantidad_delitos <- 
+  ggplot(tabla1,aes(x=fecha2, y=n)) +
+  geom_bar(stat = "identity", fill="darkolivegreen3", color = "gold") +
+  ggtitle("Cantidad de delitos por mes") +
+  ylab("Cantidad de Delitos") +
+  xlab("Mes") +
+  scale_x_continuous(breaks = c(1:11),labels = c("Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Set","Oct","Nov"))+
+  theme_classic()
+ggplotly(ggplot2_cantidad_delitos) %>% config(locale = 'es')
 })
 ```
+
 
 
 ### **Proporción de delitos por género**
