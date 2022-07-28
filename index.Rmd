@@ -4,7 +4,9 @@ output:
   flexdashboard::flex_dashboard:
     orientation: columns
     vertical_layout: fill
-    runtime: shiny
+    theme: united
+
+runtime: shiny
 ---
 
 ```{r setup, include=FALSE}
@@ -32,7 +34,7 @@ library(spData)
 library(colourpicker)
 
 ```
-Página 1
+Presentación
 ===============================================================
 Column {data-width=650}
 -----------------------------------------------------------------------
@@ -90,8 +92,9 @@ Este informe científico pretende generar una aplicación con _shiny_, que permi
 
 2. Y un archivo geoespacial de la delimitación político administrativa [distritos_simplificados.geojson](https://gf0604-procesamientodatosgeograficos.github.io/2022-i/datos/ign/delimitacion-territorial-administrativa/distritos_simplificados.geojson), que proviene de un [geoservicio de tipo Web Feature Service (WFS)](https://www.snitcr.go.cr/ico_servicios_ogc_info?k=bm9kbzo6MjY=&nombre=IGN%20Cartograf%C3%ADa%201:5mil), del SNIT. 
 
-Página 2
-===============================================================
+
+Filtrado
+==============================================================
 
 ```{r carga de datos}
 estadisticas <- read_xls(path="estadisticaspoliciales2021.xls")
@@ -203,6 +206,35 @@ filtrarEstadisticas <- reactive({
 
 
 ```
+
+Row {.tabset .tabset-fade}
+----------------------------------------------------------------------------
+### **Tabla interactiva de las estadísticas policiales registradas por el (OIJ) en el 2021**
+
+
+```{r tabla23, message=FALSE, echo=FALSE, warning=FALSE}
+renderDT({
+  estadisticas <- filtrarEstadisticas()
+estadisticas %>%
+  dplyr::select(Delito, Fecha, Victima, Edad, Genero, Provincia, Canton, Distrito) %>%
+  datatable(colnames = c(
+    "Delito",
+    "Fecha",
+    "Víctima",
+    "Edad",
+    "Género",
+    "Provincia",
+    "Cantón",
+    "Distrito"
+  ),
+options = list(
+  language = list(url = '//cdn.datatables.net/plug-ins/1.10.11/i18n/Spanish.json')
+))})
+```
+
+
+Correlación gráficos-mapa
+===============================================================
 
 Column {data-width=550}
 -----------------------------------------------------------------------
@@ -391,18 +423,7 @@ leaflet() %>%
 ```
 
 Row {.tabset .tabset-fade}
-----------------------------------------------------------------------------
-### **Tabla interactiva de las estadísticas policiales registradas por el (OIJ) en el 2021**
-
-```{r tabla23, message=FALSE, echo=FALSE, warning=FALSE}
-renderDT({
-  estadisticas <- filtrarEstadisticas()
-estadisticas %>%
-  datatable(options = list(
-    pageLength = 10,
-    language = list(url = '//cdn.datatables.net/plug-ins/1.10.11/i18n/Spanish.json')
-  ), colnames=c("Delito", "Fecha", "Víctima", "Edad", "Género", "Provincia", "Cantón", "Distrito"))})
-```
+-----------------------------------------------------------------------
 
 ### **Cantidad de delitos por tipo de delito**
 
@@ -514,7 +535,7 @@ ggplotly(ggplot2_barras_apiladas_cantidad) %>%
 })
 ```
 
-Página 3
+Conclusiones
 ===============================================================
 
 Column {data-width=650}
