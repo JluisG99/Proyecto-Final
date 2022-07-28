@@ -1,14 +1,16 @@
 ---
-title: "Visualización de estadísticas y un mapa de los delitos en Costa Rica; generación de un Dashboard interactivo con datos del OIJ del 2021"
+title: "Visualización de estadísticas y un mapa de los delitos en Costa Rica; con un shiny app, con datos del OIJ del 2021"
 output: 
   flexdashboard::flex_dashboard:
     orientation: columns
     vertical_layout: fill
+    runtime: shiny
 ---
 
 ```{r setup, include=FALSE}
 library(flexdashboard)
 ```
+
 
 ```{r carga de paquetes}
 ### Carga de paquetes:
@@ -25,6 +27,9 @@ library(sf)
 library(leaflet)
 library(flexdashboard)
 library(stringi)
+library(shiny)
+library(spData)
+library(colourpicker)
 
 ```
 Página 1
@@ -34,7 +39,7 @@ Column {data-width=650}
 ### Presentación del proyecto:
 
                                          
-        Desarrollo de un tablero de control con mapas, tablas y gráficos interactivos con las estadísticas del (OIJ, 2021) en R 
+        Desarrollo de una aplicacion shiny con mapas, tablas y gráficos interactivos con las estadísticas del (OIJ, 2021) en R 
                                          
                                        
                                        Universidad de Costa Rica, escuela de Geografía 
@@ -42,27 +47,23 @@ Column {data-width=650}
                                          
                                          
                       
-                                            GF-0604 Procesamiento de datos geográficos 
-                                            
-                                            
+                                          GF-0604 Procesamiento de datos geográficos 
                                             
                                             
                                             
                                               
-                                                 Jose Luis Gamboa Mora | B78769 
+                                              Profesor: Manuel Vargas del Valle
+                                                
+                                                
+                                                
+                                              
+                                          Estudiantes: Jose Luis Gamboa Mora | B78769 
+                                          y Hilary Salmerón Fallas B87265
+                                                 
+                                            
                                                  
                                                  
-                              
-                    
-                                      
-                         
-                                                 Profesor: Manuel Vargas del Valle 
-                                                 
-                                                 
-                                                 
-                                                 
-                                                 
-                                                           I Ciclo - 2022 
+                                                        I Ciclo - 2022 
                                            
                                            
                                            
@@ -74,6 +75,8 @@ Row {.tabset .tabset-fade}
 
 * Es importante que sepa utilizar los **tabsets** presentes en la página 1 y 2; presionando sobre los subtítulos que se muestran en la parte superior de la página, se puede navegar entre los diferentes productos. 
 
+* Y los filtros, que se encuentran hacia la izquierda de la pantalla, al seleccionar sus preferencias, estas se verán reflejadas en los productos que se muestran en la página 2. 
+
 * En la página 2, ver el mapa, tablas y los gráfico generados con datos del [INEC](https://www.inec.cr/) y del [OIJ](https://sitiooij.poder-judicial.go.cr/)
 
 * Se presenta un mapa interactivo que representa la cantidad de delitos por cantón, ahí podrás hacer zoom con los botones __"+"__ y **"-"** , además, para activar y desactivar la capa del mapa de coropletas se debe ir al **control de capas** que se encuentra en la _esquina superior_ derecha del mapa y una **leyenda** en la _esquina inferior izquierda_. Además, al hacer un _clic_ sobre cualquier punto del mapa se __desplegará__ información referente al cantón sobre el cual se ejecutó el clic. 
@@ -81,228 +84,531 @@ Row {.tabset .tabset-fade}
 * Por otra parte, la tabla y los gráficos cuentan con diferentes **botones** y un **scroll** que permite interactuar con los datos presentados. 
 
 ### Introducción: 
-Este informe científico pretende generar un _tablero de control_, que permita visualizar tablas, gráficos y mapas interactivos generados con: 
+Este informe científico pretende generar una aplicación con _shiny_, que permita visualizar tablas, gráficos y mapas interactivos, y realizar filtros, todo esto, generado con: 
 
 1. Las [estadisticaspoliciales2021.xls](https://gf0604-procesamientodatosgeograficos.github.io/2022-i/datos/oij/estadisticas-policiales/estadisticaspoliciales2021.xls), que proviene de la [página web del Organismo de Investigación Judicial (OIJ)](https://sitiooij.poder-judicial.go.cr/index.php/ayuda/servicios-policiales/servicios-a-organizaciones/indice-de-transparencia-del-sector-publico-costarricense/datos-abiertos) 
 
-2. Y un archivo geoespacial de la delimitación político administrativa [cantones_simplificados.geojson](https://gf0604-procesamientodatosgeograficos.github.io/2022-i/datos/ign/delimitacion-territorial-administrativa/cantones_simplificados.geojson), que proviene de un [geoservicio de tipo Web Feature Service (WFS)](https://www.snitcr.go.cr/ico_servicios_ogc_info?k=bm9kbzo6MjY=&nombre=IGN%20Cartograf%C3%ADa%201:5mil), del SNIT. 
+2. Y un archivo geoespacial de la delimitación político administrativa [distritos_simplificados.geojson](https://gf0604-procesamientodatosgeograficos.github.io/2022-i/datos/ign/delimitacion-territorial-administrativa/distritos_simplificados.geojson), que proviene de un [geoservicio de tipo Web Feature Service (WFS)](https://www.snitcr.go.cr/ico_servicios_ogc_info?k=bm9kbzo6MjY=&nombre=IGN%20Cartograf%C3%ADa%201:5mil), del SNIT. 
 
 Página 2
 ===============================================================
 
 ```{r carga de datos}
-Est_pol <-
-read_xls("estadisticaspoliciales2021.xls") 
+estadisticas <- read_xls(path="estadisticaspoliciales2021.xls")
+estadisticas=subset(estadisticas, select=c("Delito", "Fecha", "Victima", "Edad", "Genero", "Provincia", "Canton", "Distrito"))
+estadisticas$Fecha <- as.Date(estadisticas$Fecha, format = "%d/%m/%Y")
 
-cantones <-
-  st_read(
-    dsn = "cantones_simplificados.geojson",
-    quiet = TRUE
-  ) %>%
-  st_transform(4326) # transformación a WGS84
+distritos <-
+  st_read(dsn = "distritos_simplificados.geojson", quiet = TRUE) %>%
+  st_transform(4326)
 ```
 
+
+```{r lista-delito}
+lista_delito <- unique(estadisticas$Delito)
+lista_delito <- sort(lista_delito)
+lista_delito <- c("Todos", lista_delito)
+```
+
+```{r lista-victima}
+lista_victima <- unique(estadisticas$Victima)
+lista_victima <- sort(lista_victima)
+lista_victima <- c("Todos", lista_victima)
+```
+
+```{r lista-genero}
+lista_genero <- unique(estadisticas$Genero)
+lista_genero <- sort(lista_genero)
+lista_genero <- c("Todos", lista_genero)
+```
+
+```{r lista-edad}
+lista_edad <- unique(estadisticas$Edad)
+lista_edad <- sort(lista_edad)
+lista_edad <- c("Todos", lista_edad)
+```
+
+Column {data-width=50}
+-----------------------------------------------------------------------
+
+```{r filtro-delito}
+h3("Filtrador de datos")  
+selectInput(
+  inputId = "Delito",
+  label = "Tipo de delito",
+  choices = lista_delito,
+  selected = "Todos"
+)
+```
+
+``` {r filtro-victima}
+selectInput(
+  inputId = "Victima",
+  label = "Víctima",
+  choices = lista_victima,
+  selected = "Todos"
+)
+```
+
+``` {r filtro-genero}
+selectInput(
+  inputId = "Genero",
+  label = "Género",
+  choices = lista_genero,
+  selected = "Todos"
+)
+```
+
+```{r filtro-edad}
+selectInput(
+  inputId = "Edad",
+  label = "Edad",
+  choices = lista_edad,
+  selected = "Todos"
+)
+```
+
+```{r }
+
+filtrarEstadisticas <- reactive({
+  
+  Estadisticas_filtradas <- estadisticas
+  
+    if (input$Delito != "Todos") {
+     Estadisticas_filtradas <-
+      Estadisticas_filtradas %>%
+      filter(Delito == input$Delito)
+  }  
+  
+  if (input$Victima != "Todos") {
+     Estadisticas_filtradas <-
+      Estadisticas_filtradas %>%
+      filter(Victima == input$Victima)
+  }  
+  
+  if (input$Genero != "Todos") {
+     Estadisticas_filtradas <-
+      Estadisticas_filtradas %>%
+      filter(Genero == input$Genero)
+  } 
+  
+  if (input$Edad != "Todos") {
+     Estadisticas_filtradas <-
+      Estadisticas_filtradas %>%
+      filter(Edad == input$Edad)
+  } 
+  
+  return(Estadisticas_filtradas)
+})
+
+# filtrarEstadisticas <- reactive ({
+#   Estadisticas_filtradas <- estadisticas
+#   if (input$Delito != "Todos") {
+#     Estadisticas_filtradas <-
+#       Estadisticas_filtradas %>%
+#       filter(Delito == input$Delito)
+#     
+#   if (input$Delito == "Todos") {
+#     Estadisticas_filtradas <-
+#       Estadisticas_filtradas %>%
+#       lista_delito <- unique(estadisticas$Delito)
+#       lista_delito <- sort(lista_delito)
+#       lista_delito <- c("Todos", lista_delito)
+#       
+#     updateSelectInput(
+#         session,
+#         "Delito",
+#         label = "Delito",
+#         choices = lista_delito,
+#         selected = "Todos"
+#     )
+#   }}
+#   
+#   if (input$Victima != "Todos") {
+#     Estadisticas_filtradas <-
+#       Estadisticas_filtradas %>%
+#       filter(Victima == input$Victima)
+#     
+#   if (input$Victima == "Todos") {
+#     Estadisticas_filtradas <-
+#       Estadisticas_filtradas %>%
+#       lista_victima <- unique(estadisticas$Victima)
+#       lista_victima <- sort(lista_victima)
+#       lista_victima <- c("Todos", lista_victima)
+#       
+#     updateSelectInput(
+#         session,
+#         "Victima",
+#         label = "Víctima",
+#         choices = lista_victima,
+#         selected = "Todos"
+#     )
+#   }}
+#   
+#   if (input$Genero != "Todos") {
+#     Estadisticas_filtradas <-
+#       Estadisticas_filtradas %>%
+#       filter(Genero == input$Genero)
+#     
+#   if (input$Genero == "Todos") {
+#     Estadisticas_filtradas <-
+#       Estadisticas_filtradas %>%
+#       lista_genero <- unique(estadisticas$Genero)
+#       lista_genero <- sort(lista_genero)
+#       lista_genero <- c("Todos", lista_genero)
+#       
+#     updateSelectInput(
+#         session,
+#         "Genero",
+#         label = "Género",
+#         choices = lista_genero,
+#         selected = "Todos"
+#     )
+#   }}
+#   
+#   if (input$Edad != "Todos") {
+#     Estadisticas_filtradas <-
+#       Estadisticas_filtradas %>%
+#       filter(Edad == input$Edad)
+#     
+#   if (input$Edad == "Todos") {
+#     Estadisticas_filtradas <-
+#       Estadisticas_filtradas %>%
+#       lista_edad <- unique(estadisticas$Edad)
+#       lista_edad <- sort(lista_edad)
+#       lista_edad <- c("Todos", lista_edad)
+#       
+#     updateSelectInput(
+#         session,
+#         "Edad",
+#         label = "Edad",
+#         choices = lista_edad,
+#         selected = "Todos"
+#     )
+#   }}
+#   return(Estadisticas_filtradas)
+# })
+```
 
 Column {data-width=550}
 -----------------------------------------------------------------------
 
-### Mapa Coroplético que muestra la cantidad de delitos en diferentes cantones de Costa Rica
+### **Mapa Coroplético: cantidad de delitos en los diferentes distritos de Costa Rica**
 
-```{r generación del mapa, message=FALSE}
-# En el data frame de cantones
-cantones <-
-  cantones %>%
-  mutate(canton_normalizado = tolower(stri_trans_general(canton, id = "Latin-ASCII")))
+```{r}
+distritos <-
+  distritos%>%
+  mutate(distrito_normalizado = tolower(stri_trans_general(distrito, id = "Latin-ASCII")))
+```
 
-# En el data frame de delitos
-Est_pol <-
-  Est_pol %>%
-  mutate(canton_normalizado = tolower(stri_trans_general(Canton, id = "Latin-ASCII")))
+```{r, correccion_datos, message=FALSE, warning=FALSE}
+estadisticas <-
+ estadisticas %>%
+  mutate(Distrito = if_else(Distrito == "CAIRO", "EL CAIRO", Distrito)) %>%
+  mutate(Distrito = if_else(Distrito == "FORTUNA", "LA FORTUNA", Distrito)) %>%
+  mutate(Distrito = if_else(Distrito == "HORQUETAS", "LAS HORQUETAS", Distrito)) %>%
+  mutate(Distrito = if_else(Distrito == "GENERAL", "EL GENERAL", Distrito)) %>%
+  mutate(Distrito = if_else(Distrito == "SAN JOSE DE LA MONTA?A", "SAN JOSE DE LA MONTANA", Distrito)) %>%
+  mutate(Distrito = if_else(Distrito == "MACACOMA", "MACACONA", Distrito)) %>%
+  mutate(Distrito = if_else(Distrito == "CEIBA", "LA CEIBA", Distrito)) %>%
+  mutate(Distrito = if_else(Distrito == "CORTES", "PUERTO CORTES", Distrito)) %>%
+  mutate(Distrito = if_else(Distrito == "LA AMISTAD", "LA  AMISTAD", Distrito)) %>% 
+  mutate(Distrito = if_else(Distrito == "SAN JOSE (PIZOTE)", "SAN JOSE O PIZOTE", Distrito)) %>%
+  mutate(Distrito = if_else(Distrito == "LOS ANGELES", "ANGELES", Distrito)) %>%
+  mutate(Distrito = if_else(Distrito == "ASUNCION", "LA ASUNCION", Distrito)) %>%
+  mutate(Distrito = if_else(Distrito == "MASTATE", "EL MASTATE", Distrito)) %>%
+  mutate(Distrito = if_else(Distrito == "UNION", "LA UNION", Distrito)) %>%
+  mutate(Distrito = if_else(Distrito == "MATA PLATANO", "MATA DE PLATANO", Distrito)) %>%
+  mutate(Distrito = if_else(Distrito == "AGUA BUENA", "AGUABUENA", Distrito)) %>%
+  mutate(Distrito = if_else(Distrito == "PALMERA", "LA PALMERA", Distrito)) %>%
+  mutate(Distrito = if_else(Distrito == "TIGRA", "LA TIGRA", Distrito)) %>%
+  mutate(Distrito = if_else(Distrito == "MERECEDES", "MERCEDES", Distrito)) %>%
+  mutate(Distrito = if_else(Distrito == "DRAKE", "BAHIA DRAKE", Distrito)) %>%
+  mutate(Distrito = if_else(Distrito == "GRANJA", "LA GRANJA", Distrito)) %>%
+  mutate(Distrito = if_else(Distrito == "CURE?A", "CURENA", Distrito)) %>%
+  mutate(Distrito = if_else(Distrito == "EL CHIRRIPO", "CHIRRIPO", Distrito)) %>%
+  mutate(Distrito = if_else(Distrito == "LA LEGUA", "LEGUA", Distrito)) %>%
+  mutate(Distrito = if_else(Distrito == "TAPEZCO", "TAPESCO", Distrito))
+```
 
-Est_pol %>%
-  left_join(
-    dplyr::select(st_drop_geometry(cantones),
-                  canton_normalizado, cod_canton),
-    by = "canton_normalizado",
-    copy = FALSE,
-    keep = FALSE
-  ) %>%
-  filter(is.na(cod_canton) & canton_normalizado != "desconocido") %>% # los cod_canton = NA son los que no están en el data frame de cantones
-  distinct(canton_normalizado) # se despliegan solo los nombres de cantones diferentes
+```{r}
+estadisticas <-
+  estadisticas%>%
+  mutate(distrito_normalizado = tolower(stri_trans_general(Distrito, id = "Latin-ASCII")))
+```
 
-# Corrección de nombres de cantones en delitos
-Est_pol <-
-  Est_pol %>%
-  mutate(Canton = if_else(Canton == "LEON CORTES", "LEON CORTES CASTRO", Canton)) %>%
-  mutate(Canton = if_else(Canton == "VASQUEZ DE CORONADO", "VAZQUEZ DE CORONADO", Canton))
-
-# Se realiza nuevamente esta operación para reflejar los cambios en los nombres de cantones
-Est_pol <-
-  Est_pol %>%
-  mutate(canton_normalizado = tolower(stri_trans_general(Canton, id = "Latin-ASCII")))
-
-# Revisión
-Est_pol %>%
-  left_join(
-    dplyr::select(st_drop_geometry(cantones),
-                  canton_normalizado, cod_canton),
-    by = "canton_normalizado",
-    copy = FALSE,
-    keep = FALSE
-  ) %>%
-  filter(is.na(cod_canton) & canton_normalizado != "desconocido") %>% # los cod_canton = NA son los que no están en el data frame de cantones
-  distinct(canton_normalizado)
-
-# Unión del código de cantón a Est_pol
-Est_pol <-
-  Est_pol %>%
+```{r}
+estadisticas <-
+  estadisticas %>%
   left_join(
     dplyr::select(
-      st_drop_geometry(cantones),
+      st_drop_geometry(distritos),
       cod_canton,
-      canton_normalizado
+      distrito_normalizado
     ),
-    by = "canton_normalizado",
+    by = "distrito_normalizado",
     copy = FALSE,
     keep = FALSE
   )
+```
 
-# Conteo de registros por código de cantón
+```{r}
+delitos_x_distrito <-
+  estadisticas %>%
+  count(distrito_normalizado, name = "delitos")
+```
 
-delitos_x_canton <-
-  Est_pol %>%
-  count(cod_canton, name = "delitos")
-
-# Unión de cantidad de delitos por cantón a cantones
-
-cantones_delitos <-
-  cantones %>%
+```{r}
+distritos_delitos <-
+  distritos %>%
   left_join(
-    delitos_x_canton,
-    by = "cod_canton",
+    delitos_x_distrito,
+    by = "distrito_normalizado",
+    copy = FALSE,
+    keep = FALSE
+  )
+```
+
+```{r Union de los distritos y las estadisticas}
+
+estadisticas <-
+  estadisticas %>%
+  left_join(
+    dplyr::select(
+      st_drop_geometry(distritos),
+      codigo_dta,
+      cod_canton,
+      distrito_normalizado
+    ),
+    by = c("cod_canton" = "cod_canton", "distrito_normalizado" = "distrito_normalizado"),
     copy = FALSE,
     keep = FALSE
   )
 
-# Paleta de colores para los mapas
+delitos_x_distrito <-
+  estadisticas %>%
+  count(codigo_dta, name = "delitos")
 
-colores_cantones_delitos <-
-  colorNumeric(palette = "Blues",
-               domain = cantones_delitos$delitos,
+distritos_delitos <-
+  distritos %>%
+  left_join(delitos_x_distrito,
+            by = "codigo_dta",
+            copy = FALSE,
+            keep = FALSE) %>%
+  mutate(delitos = ifelse(is.na(delitos), 0, delitos))
+```
+
+
+```{r para los colores}
+colores_distritos_delitos <-
+  colorNumeric(palette = "PuRd",
+               domain = distritos_delitos$delitos,
+              )
+```
+
+```{r}
+colores_distritos_delitos <-
+  colorNumeric(palette = "PuRd",
+               domain = distritos_delitos$delitos,
                na.color = "transparent")
+renderLeaflet({
+  delitos <- filtrarEstadisticas()
 
-# Mapa leaflet de delitos en cantones
+delitos_x_distrito <-
+  delitos %>%
+  count(codigo_dta, name = "delitos")
+
+distritos_delitos <-
+  distritos %>%
+  left_join(
+    delitos_x_distrito,
+    by = "codigo_dta",
+    copy = FALSE,
+    keep = FALSE
+  ) %>%
+  mutate(delitos = ifelse(is.na(delitos), 0, delitos)) 
 
 leaflet() %>%
-  setView(# centro y nivel inicial de acercamiento
+  setView(
     lng = -84.19452,
     lat = 9.572735,
-    zoom = 7) %>%
-  addTiles(group = "OpenStreetMap") %>% # capa base
+    zoom = 7,2) %>%
+  addTiles(group = "OpenStreetMap") %>%
   addPolygons(
-    # capa de polígonos
-    data = cantones_delitos,
-    fillColor = ~ colores_cantones_delitos(cantones_delitos$delitos),
+    data = distritos_delitos,
+    fillColor = ~ colores_distritos_delitos(distritos_delitos$delitos),
     fillOpacity = 0.8,
     color = "black",
     stroke = TRUE,
     weight = 1.0,
     popup = paste(
-      # ventana emergente
       paste(
-        "<strong>Cantón:</strong>",
-        cantones_delitos$canton
-      ),
+        "Provincia:",
+        distritos_delitos$provincia
+      ), 
       paste(
-        "<strong>Delitos:</strong>",
-        cantones_delitos$delitos
-      ),
-      sep = '<br/>'
-    ),
-    group = "Delitos en cantones"
+        "Cantón:",
+        distritos_delitos$canton
+      ), 
+      paste(
+        "Distrito:",
+        distritos_delitos$distrito
+      ), 
+      paste(
+        "Delitos:",
+        distritos_delitos$delitos
+      ), 
+      sep = "<br>"
+    ), 
+    group = "Delitos en distritos"
   ) %>%
   addLayersControl(
-    # control de capas
     baseGroups = c("OpenStreetMap"),
-    overlayGroups = c("Delitos en cantones")
+    overlayGroups = c("Delitos en distritos")
   ) %>%
   addLegend(
-    # leyenda
     position = "bottomleft",
-    pal = colores_cantones_delitos,
-    values = cantones_delitos$delitos,
-    group = "Delitos",
+    pal = colores_distritos_delitos,
+    values = distritos_delitos$delitos,
+    group = "Delitos en distritos",
     title = "Cantidad de delitos"
   )
+})
 
+
+
+# renderLeaflet({
+#   estadisticas <- filtrarEstadisticas()
+#   
+#   delitos_x_distrito <-
+#   estadisticas %>%
+#   count(codigo_dta, name = "delitos")
+# distritos_delitos <-
+#   distritos %>%
+#   left_join(
+#     delitos_x_distrito,
+#     by = "codigo_dta",
+#     copy = FALSE,
+#     keep = FALSE
+#   ) %>%
+#   mutate(delitos = ifelse(is.na(delitos), 0, delitos))
+#   
+# leaflet() %>%
+#   setView(
+#     lng = -84.19452,
+#     lat = 9.572735,
+#     zoom = 7) %>%
+#   addTiles(group = "OpenStreetMap") %>%
+#   addPolygons(
+#     data = distritos_delitos,
+#     fillColor = ~ colores_distritos_delitos(distritos_delitos$delitos),
+#     fillOpacity = 0.8,
+#     color = "black",
+#     stroke = TRUE,
+#     weight = 1.0,
+#     popup = paste(
+#       paste(
+#         "<strong>Distrito:</strong>",
+#         distritos_delitos$distrito
+#       ),
+#       paste(
+#         "<strong>Delitos:</strong>",
+#         distritos_delitos$delitos
+#       ),
+#       paste(
+#         "<strong>Cantón:</strong>",
+#         distritos_delitos$canton
+#       ),
+#       paste(
+#         "<strong>Provincia:</strong>",
+#         distritos_delitos$provincia
+#       ),
+#       sep = '<br/>'
+#     ),
+#     group = "Distritos"
+#   ) %>%
+#   addLayersControl(
+#     baseGroups = c("OpenStreetMap"),
+#     overlayGroups = c("Distritos")
+#   ) %>%
+#   addLegend(
+#     position = "bottomleft",
+#     pal = colores_distritos_delitos,
+#     values = distritos_delitos$delitos,
+#     group = "Delitos",
+#     title = "Cantidad de delitos"
+#   )
+# })
 ```
 
 Row {.tabset .tabset-fade}
 ----------------------------------------------------------------------------
 ### **Tabla interactiva de las estadísticas policiales registradas por el (OIJ) en el 2021**
 
-```{r }
-Est_pol %>%
-  dplyr::select(Delito, Fecha, Victima, Edad, Genero, Provincia, Canton) %>%
-  datatable(colnames = c(
-    "Delito",
-    "Fecha",
-    "Víctima",
-    "Edad",
-    "Género",
-    "Provincia",
-    "Cantón"
-  ), options = list(pageLength = 5, language = list(url = '//cdn.datatables.net/plug-ins/1.10.11/i18n/Spanish.json')))
-
+```{r tabla23, message=FALSE, echo=FALSE, warning=FALSE}
+renderDT({
+  estadisticas <- filtrarEstadisticas()
+estadisticas %>%
+  datatable(options = list(
+    pageLength = 10,
+    language = list(url = '//cdn.datatables.net/plug-ins/1.10.11/i18n/Spanish.json')
+  ), colnames=c("Delito", "Fecha", "Víctima", "Edad", "Género", "Provincia", "Cantón", "Distrito"))})
 ```
 
-### **Cantidad de delitos por tipo de delito en Costa Rica, 2021**
+### **Cantidad de delitos por tipo de delito**
 
-```{r Gráfico de la cantidad de delitos por tipo de delito}
-Delitos <-
-Est_pol %>%
+```{r grafico-cantidad-delitos}
+renderPlotly({
+  estadisticas <- filtrarEstadisticas()
+  
+grafico_delitos <-
+  estadisticas %>%
   count(Delito) %>%
-  ggplot(aes(x = reorder(Delito, n), y = n)) + 
-  geom_bar(stat = "identity") +
-coord_flip() +
-ggtitle("Cantidad de delitos por tipo de delito") + 
-  xlab("Tipo de delito") + 
-  ylab("Cantidad de delitos") + 
+  ggplot(aes(x = reorder(Delito, n), y = n)) +
+  geom_bar(stat = "identity",fill= "brown") +
+  ggtitle("Cantidad de delitos por tipo de delito") + 
+  xlab("Tipo de delito") +
+  ylab("Cantidad") +
+  coord_flip() +
   theme_minimal()
-ggplotly(Delitos) %>% 
+ggplotly(grafico_delitos)%>% 
   config(locale = 'es')
+}) 
 ```
 
 
 ### **Cantidad de delitos por tipo de víctima**
 
-```{r Cantidad de delitos por tipo de victima}
-Delitos_victimas <-
-  Est_pol %>%
-  dplyr::select(Delito, Victima) %>%
+```{r message=FALSE, warning=FALSE, echo=FALSE}
+renderPlotly({
+  estadisticas <- filtrarEstadisticas()
+  
+grafico_delitos <-
+  estadisticas %>%
   count(Victima) %>%
-  #ggplot(aes(x = Delito, y = Victima)) +
   ggplot(aes(x = reorder(Victima, n), y = n)) +
-  geom_bar(stat = "identity") +
-  coord_flip() +
-  ggtitle("Cantidad de delitos por tipo de víctima") +
+  geom_bar(stat = "identity", fill=c(1:5)) +
   xlab("Tipo de delito") +
-  ylab("Víctima") +
+  ylab("Cantidad") +
+   ggtitle("Cantidad de delitos por tipo de víctima") +
+  coord_flip()
   theme_minimal()
-
-ggplotly(Delitos_victimas) %>%
+ggplotly(grafico_delitos)%>%
   config(locale = 'es')
+})
 ```
 
-### **Cantidad de delitos registrados por el OIJ, de Enero a Noviembre del 2021 en Costa Rica**
-
+### **Cantidad de delitos por mes**
 ```{r}
-Del_mes <- Est_pol %>%
-  dplyr::select(Fecha, Delito, Hora)
+Del_mes <- estadisticas %>%
+  dplyr::select(Fecha, Delito)
 ```
 
 
-```{r}
+```{r grafico-delitos-mes, message=FALSE}
+renderPlotly({
+  estadisticas <- filtrarEstadisticas()
+
 graph2 <- 
 Del_mes %>% mutate(mes = month(Fecha, label = FALSE)) %>%
   ggplot() +
@@ -313,29 +619,50 @@ Del_mes %>% mutate(mes = month(Fecha, label = FALSE)) %>%
   theme_minimal() 
 ggplotly(graph2) %>%
   config(locale = 'es')
+})
 ```
 
 
-### **Proporción de la ocurrencia de delitos por género en Costa Rica, registrados por el OIJ en el 2021**
+### **Proporción de delitos por género**
 
-```{r}
-Propor_gen <- Est_pol %>%
-  dplyr::select(Delito, Genero)
-```
-
-```{r}
-Apiladas_propor_genero <-
-  Propor_gen %>%
-  ggplot(aes(x = Delito, fill = Genero)) + 
+```{r delitos-genero}
+renderPlotly({
+  estadisticas <- filtrarEstadisticas()
+  
+ggplot2_barras_apiladas_cantidad <-
+  estadisticas %>%
+  ggplot(aes(x = estadisticas$Delito, fill = estadisticas$Genero)) +
   geom_bar(position = "fill") +
-  coord_flip() +
-  ggtitle("Proporción de la ocurrencia de delitos por género") +
+  coord_flip()+
   xlab("Delito") +
-  ylab("Proporción") +
-  labs(fill = "Genero") +
+  ylab("Proporcion") +
+  ggtitle("Proporcion de la ocurrencia de delitos por género") +
+  labs(fill = "Género") +
   theme_minimal()
+ggplotly(ggplot2_barras_apiladas_cantidad) %>% 
+  config(locale = 'es')
+})
+```
 
-ggplotly(Apiladas_propor_genero) %>% config(locale = 'es')
+### **Proporción de delitos por edad**
+
+```{r delitos-edad}
+renderPlotly({
+  estadisticas <- filtrarEstadisticas()
+  
+ggplot2_barras_apiladas_cantidad <-
+  estadisticas %>%
+  ggplot(aes(x = estadisticas$Delito, fill = estadisticas$Edad)) +
+  geom_bar(position = "fill") +
+  ggtitle("Proporcion de delitos por edad")+
+  xlab("Tipo de Delito") +
+  ylab("Proporcion") +
+  labs(fill = "Edad") +
+  theme_minimal()+
+  coord_flip()
+ggplotly(ggplot2_barras_apiladas_cantidad) %>% 
+  config(locale = 'es')
+})
 ```
 
 Página 3
@@ -347,7 +674,6 @@ Column {data-width=650}
 
 Considero importante concluir que este tipo de visualizaciones web mediante dashboards del paquete _FlexDashboard_ de __R__, es una herramienta que enriquece el conocimiento científico y permite generar un abanico de posibilidades para el uso de estas tecnologías en diferentes temáticas de la Geografía. 
 
-Además, la funcionalidad del paquete ggplotly para la interctividad de los gráficos y los mapas leaflet permiten que el desarrollador capture la atención de su público  meta. 
+La funcionalidad del paquete ggplotly para la interctividad de los gráficos y los mapas leaflet permiten que el desarrollador capture la atención de su público  meta. 
 
-
-
+Ademas, la publicacion de aplicaciones shiny en la web, permite compartir los productos generados con una gran cantidad de personas. Por lo tanto, estas aplicaciones son funcionales para la divulgación científica y el desarrollo de productos en conjunto con las comunidades meta. 
